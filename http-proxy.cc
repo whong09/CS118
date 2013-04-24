@@ -100,6 +100,12 @@ int main(int argc, char *argv[])
 			
 			client_req.ParseRequest(client_string.c_str(),client_string.length());
 			
+			string hostname;
+			if (client_req.GetHost().length()==0)
+			{
+					client_req.SetHost(client_req.FindHeader("Host"));
+					client_req.SetPort(80);
+			}
 			cout << "The hostname that the client wants is: " << client_req.GetHost() << ":" << client_req.GetPort() << endl;
 			
 			
