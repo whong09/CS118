@@ -53,6 +53,27 @@ string get_remote_page(HttpRequest req)
   return s.str();
 }
 
+string get_host(HttpRequest * req)
+{
+	if (req->GetHost().length()==0)
+	{
+		req->SetHost(req->FindHeader("Host"));
+	}
+	return req->GetHost();
+}
+
+unsigned short get_port(HttpRequest * req)
+{
+	if (req->GetPort()==0)
+	{
+		req->SetPort(80);
+	}
+	return req->GetPort();
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char *argv[])
 {
 
@@ -76,30 +97,23 @@ int main(int argc, char *argv[])
 	{
 		bzero(&client_addr,sizeof(client_addr));
 		newsockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_size);
-		
 		if (newsockfd < 0)
 			perror("Accepting connection error");
-		
 		pid = fork();
-		
 		if(pid < 0)
 			perror("Forking error");
 		else if (pid == 0)
 		{
 			string client_string="";
-			
+
 			//getting the request string
 			while(1)
 			{
-				bzero(buffer,256);
-				
+				bzero(buffer,256);				
 				n = read(newsockfd,buffer,255);
-				
 				if (n < 0)
 					perror("Read request error");
-				
 				client_string.append(buffer,n);
-				
 				//check end with \r\n\r\n
 				//Todo: should use memmem to deal with persistent
 				if (n==2 && buffer[0]=='\r' && buffer[1]=='\n')
@@ -107,17 +121,11 @@ int main(int argc, char *argv[])
 			}
 			
 			HttpRequest client_req;
-			
 			client_req.ParseRequest(client_string.c_str(),client_string.length());
-			
-			string hostname;
-			if (client_req.GetHost().length()==0)
-			{
-					client_req.SetHost(client_req.FindHeader("Host"));
-					client_req.SetPort(80);
-			}
-			cout << "The hostname that the client wants is: " << client_req.GetHost() << ":" << client_req.GetPort() << endl;
 
+			cout << "The hostname that the client wants is: " << get_host(&client_req) << endl;
+			cout << "Port number of the remote host is: " << get_port(&client_req) << endl;
+			//cout << get_remote_page(client_req);
     }
   }
   
