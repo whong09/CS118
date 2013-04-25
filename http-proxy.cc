@@ -22,11 +22,17 @@ string get_remote_page(HttpRequest req)
   char recvBuff[1024];
   char sendBuff[1024];
   struct addrinfo *servinfo, *p;
-  memset(recvBuff, '0',sizeof(recvBuff));
-  memset(sendBuff, '0', sizeof(sendBuff));
-  if((status = getaddrinfo(req.GetHost().c_str(), "http", NULL, &servinfo)) != 0)
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = PF_INET;
+  hints.ai_flags = AI_PASSIVE;
+  hints.ai_socktype = SOCK_STREAM;
+  memset(recvBuff, 0,sizeof(recvBuff));
+  memset(sendBuff, 0, sizeof(sendBuff));
+  if((status = getaddrinfo(req.GetHost().c_str(), "http", &hints, &servinfo)) != 0)
     perror(gai_strerror(status));
   for(p = servinfo; p != NULL; p = p->ai_next) {
+	cout << "checking ip" << endl;
     if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
       continue;
     }
@@ -36,21 +42,20 @@ string get_remote_page(HttpRequest req)
     }
     break;
   }
+cout << "socket created" << endl;
   if(p==NULL)
 	perror("Connect Error");
   freeaddrinfo(servinfo);
   req.FormatRequest(sendBuff);
   write(sockfd, sendBuff, req.HttpRequest::GetTotalLength());
-  stringstream s;
-  s.str("");
+  string s="";
   while((n = read(sockfd, recvBuff, sizeof(recvBuff)-1)) > 0)
   {
 	cout << "am i here?" << endl;
-		recvBuff[n]=0;
-		s<< recvBuff;
+	s.append(recvBuff,n);
   }
   close(sockfd);
-  return s.str();
+  return s;
 }
 
 string get_host(HttpRequest * req)
@@ -105,31 +110,36 @@ int main(int argc, char *argv[])
 	    	perror("Forking error");
 	    else if (pid == 0)
 	    {
-	    	string client_string="";
-	    	//getting the request string
-	    	while(1)
-	    	{
-	        	bzero(buffer,256);
-	        	n = read(newsockfd,buffer,255);
-	        	if (n < 0)
-	        		perror("Read request error");
-	        	client_string.append(buffer,n);
-	        	//check end with \r\n\r\n
-	        	//Todo: should use memmem to deal with persistent
-	        	if (n==2 && buffer[0]=='\r' && buffer[1]=='\n')
-	        		break;
-	      	}
-	      	HttpRequest client_req;
-			
-	      	client_req.ParseRequest(client_string.c_str(),client_string.length());
-	      	cout << "The hostname that the client wants is: " << get_host(&client_req) <<  endl;
-			cout << "The port number is: " << get_port(&client_req) << endl;
-	      	client_req.AddHeader("Connection", "close");
-		  	string s = get_remote_page(client_req);
-			cout << s.length() << endl;
-		  	cout << s << endl;
-			write(newsockfd,s.c_str(),s.length());
-			cout << "good";
+			string from_client_str;
+			while(1)
+			{
+				from_client_str = "";
+		    	//getting the request string
+		    	while(1)
+		    	{
+		        	bzero(buffer,256);
+		        	n = read(newsockfd,buffer,255);
+		        	if (n < 0)
+		        		perror("Read request error");
+		        	from_client_str.append(buffer,n);
+		        	//check end with \r\n\r\n
+		        	//Todo: should use memmem to deal with persistent
+		        	if (n==2)
+		        		break;
+				}
+		      	HttpRequest client_req;			
+		      	client_req.ParseRequest(from_client_str.c_str(),from_client_str.length());
+		      	cout << "The hostname that the client wants is: " << get_host(&client_req) <<  endl;
+				cout << "The port number is: " << get_port(&client_req) << endl;
+		      	client_req.AddHeader("Connection", "close");
+			  	string s = get_remote_page(client_req);
+			  	cout << s << endl;
+				HttpResponse client_resp;
+				client_resp.ParseResponse(s.c_str(),s.length());
+
+				write(newsockfd,s.c_str(),s.length());
+				cout << client_resp.FindHeader("Date") << endl;
+			}
 	    }
 	}
 
