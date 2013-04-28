@@ -72,7 +72,6 @@ string get_remote_page(HttpRequest req)
 	}
 	while((n = recv(sockfd, recvBuff, sizeof(recvBuff)-1,0)) > 0)
 	{
-		//cout << "am i here?" << endl;
 		s.append(recvBuff,n);
 	}
 	close(sockfd);
@@ -96,6 +95,7 @@ unsigned short get_port(HttpRequest * req)
 	}
 	return req->GetPort();
 }
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -149,7 +149,15 @@ int main(int argc, char *argv[])
 		        		break;
 				}
 		      	HttpRequest client_req;
-		      	client_req.ParseRequest(from_client_str.c_str(),from_client_str.length());
+				try
+				{
+					client_req.ParseRequest(from_client_str.c_str(),from_client_str.length());
+				}
+				catch(ParseException& p)
+				{
+					string s = p.what();
+					write(newsockfd, s.c_str(), s.length());
+				}
 				get_host(&client_req);
 				get_port(&client_req);
 				client_req.ModifyHeader("Connection","close");
