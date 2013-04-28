@@ -156,7 +156,10 @@ int main(int argc, char *argv[])
 				catch(ParseException& p)
 				{
 					string s = p.what();
+					if (s == "Request is not GET")
+						s="Not Implemented";
 					write(newsockfd, s.c_str(), s.length());
+					break;
 				}
 				get_host(&client_req);
 				get_port(&client_req);
