@@ -16,7 +16,7 @@
 #include "compat.h"
 #include <sys/wait.h>
 
-#define LIM 1
+#define LIM 10
 
 using namespace std;
 
@@ -124,14 +124,13 @@ int main(int argc, char *argv[])
 
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
 	{
-		perror("setsockopt"); exit(1);
+		perror("setsockopt"); 
 	}  
 	if (bind(sockfd, (struct sockaddr *) &server_addr,sizeof(server_addr)) < 0)
 		perror("Binding error");
 	if(listen(sockfd,10) == -1)
 	{
 		perror("listen error");
-		exit(1);
 	}
 
 	sa.sa_handler = sigchld_handler;	//reap all dead process
@@ -140,14 +139,12 @@ int main(int argc, char *argv[])
 	if(sigaction(SIGCHLD, &sa, NULL) == -1)
 	{
 		perror("sigaction error");
-		exit(1);
 	}
 
 	cout << "proxy: waiting for connections..." << endl;
 
 	int numActive = 0;
-	bool done = false;
-	for (; !done; ++numActive) 
+	for (;true; ++numActive)
 	{
 	    bzero(&client_addr,sizeof(client_addr));
 	    newsockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_size);
@@ -184,8 +181,7 @@ int main(int argc, char *argv[])
 				{
 					cout << "process #" << getpid() << " is killed" << endl;
 					close(newsockfd);
-					kill(getpid(), SIGKILL);
-					break;
+					exit(1);
 				}
 		      	HttpRequest client_req;
 				try
@@ -195,13 +191,13 @@ int main(int argc, char *argv[])
 				catch(ParseException& p)
 				{
 				
-					string s = p.what();
-					s += "\n";
-					if (s == "Request is not GET\n")
-						s="Not Implemented 501\n";
+					string ss = p.what();
+					//ss += "\n";
+					if (ss == "Request is not GET\n")
+						ss="Not Implemented 501\n";
 					else
-						s="Bad Request 501\n";
-					write(newsockfd, s.c_str(), s.length());
+						ss="Bad Request 400\n";
+					write(newsockfd, ss.c_str(), ss.length());
 					continue;
 				}
 				get_host(&client_req);
@@ -218,7 +214,6 @@ int main(int argc, char *argv[])
 				string sendstring = "";
 				sendstring.append(sendBuff,len);
 				sendstring.append(s.substr(old_len).c_str(),s.length()-old_len);
-				sendstring.append('\n',1);
 				if(write(newsockfd,sendstring.c_str(),sendstring.length()) == -1)
 					perror("Sending response error");
 			}
