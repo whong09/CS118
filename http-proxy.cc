@@ -14,6 +14,9 @@
 #include "http-response.h"
 #include <signal.h>
 #include "compat.h"
+#include <sys/wait.h>
+
+#define LIM 1
 
 using namespace std;
 
@@ -96,35 +99,62 @@ unsigned short get_port(HttpRequest * req)
 	return req->GetPort();
 }
 
+void sigchld_handler(int s)       //reap dead process
+{
+	while(waitpid(-1, NULL, WNOHANG)>0);
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char *argv[])
 {
-	int sockfd, newsockfd, n, pid;
+	int sockfd, newsockfd, n, pid, status;
 	int port = 14805;
+	int yes = 1;
 	struct sockaddr_in server_addr, client_addr;
+	struct sigaction sa;
 	socklen_t client_addr_size;
+
 	bzero(&server_addr,sizeof(server_addr));
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	    perror("Socket Creating error");
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 	server_addr.sin_port = htons(port); 
-	int yes = 1;
+
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
 	{
 		perror("setsockopt"); exit(1);
 	}  
 	if (bind(sockfd, (struct sockaddr *) &server_addr,sizeof(server_addr)) < 0)
 		perror("Binding error");
-	listen(sockfd,10);
-	while (1) 
+	if(listen(sockfd,10) == -1)
+	{
+		perror("listen error");
+		exit(1);
+	}
+
+	sa.sa_handler = sigchld_handler;	//reap all dead process
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART;
+	if(sigaction(SIGCHLD, &sa, NULL) == -1)
+	{
+		perror("sigaction error");
+		exit(1);
+	}
+
+	cout << "proxy: waiting for connections..." << endl;
+
+	int numActive = 0;
+	bool done = false;
+	for (; !done; ++numActive) 
 	{
 	    bzero(&client_addr,sizeof(client_addr));
 	    newsockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_size);
 	    if (newsockfd < 0)
 	    	perror("Accepting connection error");
+		for(; numActive >= LIM; --numActive)
+			wait(&status);
 	    pid = fork();
 	    if(pid < 0)
 	    	perror("Forking error");
@@ -141,12 +171,21 @@ int main(int argc, char *argv[])
 		    	{
 		        	bzero(buffer,256);
 		        	n = read(newsockfd,buffer,255);
+					if (n == 0)
+						break;
 		        	if (n < 0)
 		        		perror("Read request error");
 		        	from_client_str.append(buffer,n);
 		        	//check end with \r\n\r\n
 		        	if (memmem(from_client_str.c_str(), from_client_str.length(), "\r\n\r\n", 4) != NULL)
 		        		break;
+				}
+				if (n == 0) //client closed connection
+				{
+					cout << "process #" << getpid() << " is killed" << endl;
+					close(newsockfd);
+					kill(getpid(), SIGKILL);
+					break;
 				}
 		      	HttpRequest client_req;
 				try
@@ -155,11 +194,15 @@ int main(int argc, char *argv[])
 				}
 				catch(ParseException& p)
 				{
+				
 					string s = p.what();
-					if (s == "Request is not GET")
-						s="Not Implemented";
+					s += "\n";
+					if (s == "Request is not GET\n")
+						s="Not Implemented 501\n";
+					else
+						s="Bad Request 501\n";
 					write(newsockfd, s.c_str(), s.length());
-					break;
+					continue;
 				}
 				get_host(&client_req);
 				get_port(&client_req);
@@ -175,11 +218,13 @@ int main(int argc, char *argv[])
 				string sendstring = "";
 				sendstring.append(sendBuff,len);
 				sendstring.append(s.substr(old_len).c_str(),s.length()-old_len);
+				sendstring.append('\n',1);
 				if(write(newsockfd,sendstring.c_str(),sendstring.length()) == -1)
 					perror("Sending response error");
 			}
 	    }
 	}
+	close(sockfd);
 	  return 0;
 }
 
