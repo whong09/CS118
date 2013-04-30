@@ -1,5 +1,6 @@
 #include <sstream>
 #include <iostream>
+#include <vector>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -38,21 +39,21 @@ int sendall(int s, char *buf, int *len)
     return n==-1?-1:0; // return -1 on failure, 0 on success
 }
 
-string get_remote_page(HttpRequest req)
+vector<string> get_remote_pages(vector<HttpRequest> req)
 {
 	int sockfd = 0, n = 0, status;
 	char recvBuff[100000];
 	char sendBuff[100000];
 	struct addrinfo *servinfo, *p;
 	struct addrinfo hints;
-	string s="";
+	vector<string> ret;
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = PF_INET;
 	hints.ai_flags = AI_PASSIVE;
 	hints.ai_socktype = SOCK_STREAM;
 	memset(recvBuff, 0, 100000);
 	memset(sendBuff, 0, 100000);
-	if((status = getaddrinfo(req.GetHost().c_str(), "http", &hints, &servinfo)) != 0)
+	if((status = getaddrinfo(req[0].GetHost().c_str(), "http", &hints, &servinfo)) != 0)
 		perror(gai_strerror(status));
 	for(p = servinfo; p != NULL; p = p->ai_next) {
 		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
@@ -67,18 +68,30 @@ string get_remote_page(HttpRequest req)
 	if(p==NULL)
 		perror("Connect Error");
 	freeaddrinfo(servinfo);
-	req.FormatRequest(sendBuff);
-	int length = req.HttpRequest::GetTotalLength();
-	if(sendall(sockfd,sendBuff,&length) == -1)
+
+	for(size_t i = 0; i < req.size(); i++)
 	{
-		perror("Sending request error");
+		req[i].FormatRequest(sendBuff);
+		int length = req[i].HttpRequest::GetTotalLength();
+		if(sendall(sockfd,sendBuff,&length) == -1)
+		{
+			perror("Sending request error");
+		}
+		memset(sendBuff, 0, 100000);
 	}
-	while((n = recv(sockfd, recvBuff, sizeof(recvBuff)-1,0)) > 0)
+	for(size_t i = 0; i < req.size(); i++)
 	{
-		s.append(recvBuff,n);
+		string s = "";
+		while((n = recv(sockfd, recvBuff, sizeof(recvBuff)-1,0)) > 0)
+		{
+			s.append(recvBuff,n);
+			cout << s << endl;
+		}
+		ret.push_back(s);
+		memset(recvBuff, 0, 100000);
 	}
 	close(sockfd);
-	return s;
+	return ret;
 }
 
 string get_host(HttpRequest * req)
@@ -108,7 +121,7 @@ void sigchld_handler(int s)       //reap dead process
 
 int main(int argc, char *argv[])
 {
-	int sockfd, newsockfd, n, pid, status;
+	/*int sockfd, newsockfd, n, pid, status;
 	int port = 14805;
 	int yes = 1;
 	struct sockaddr_in server_addr, client_addr;
@@ -220,6 +233,21 @@ int main(int argc, char *argv[])
 	    }
 	}
 	close(sockfd);
-	  return 0;
+	  return 0;*/
+	vector<HttpRequest> req;
+	for(int i = 0; i < 2; i++)
+	{
+		HttpRequest r;
+		r.SetHost("www.google.com");
+		r.SetPort(80);
+		r.SetMethod(HttpRequest::GET);
+		r.SetVersion ("1.1");
+        r.AddHeader ("Accept-Language", "en-US");
+        req.push_back(r);
+	}
+	req[0].SetPath("/images/srpr/logo4w.png");
+	req[1].SetPath("/images/nav_logo123.png");
+	vector<string> s = get_remote_pages(req);
+	cout << s[0] << endl;
+	cout << s[1] << endl;
 }
-
