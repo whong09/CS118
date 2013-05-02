@@ -71,13 +71,9 @@ int getRemoteSocket(HttpRequest req)
 	return serverSock;
 }
 
-string get_remote_page(HttpRequest req, int serverSock)
+void send_remote_req(HttpRequest req, int serverSock)
 {
-	int n;
-	char recvBuff[100000];
 	char sendBuff[100000];
-	string s="";
-	memset(recvBuff, 0, 100000);
 	memset(sendBuff, 0, 100000);
 	req.FormatRequest(sendBuff);
 	int length = req.HttpRequest::GetTotalLength();
@@ -85,12 +81,18 @@ string get_remote_page(HttpRequest req, int serverSock)
 	{
 		perror("Sending request error");
 	}
-	while((n = recv(serverSock, recvBuff, sizeof(recvBuff)-1,0)) > 0)
+}
+
+string get_remote_resp(int serverSock)
+{
+	int n;
+	char recvBuff[100000];
+	string s="";
+	memset(recvBuff, 0, 100000);
+	while((n = recv(serverSock, recvBuff, sizeof(recvBuff),0)) > 0)
 	{
 		s.append(recvBuff,n);
 	}
-	if (n==0)
-		close(serverSock);
 	return s;
 }
 
@@ -121,7 +123,7 @@ void sigchld_handler(int s)       //reap dead process
 
 int main(int argc, char *argv[])
 {
-	int sockfd, newsockfd, remotesockfd, n, pid, status;
+	int listensock, clientsock, n, pid, status;
 	int port = 14805;
 	int yes = 1;
 	struct sockaddr_in server_addr, client_addr;
@@ -129,26 +131,27 @@ int main(int argc, char *argv[])
 	socklen_t client_addr_size;
 
 	bzero(&server_addr,sizeof(server_addr));
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	if ((listensock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	    perror("Socket Creating error");
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 	server_addr.sin_port = htons(port); 
 
-	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
+	if (setsockopt(listensock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
 	{
-		perror("setsockopt"); exit(1);
+		//perror("setsockopt"); 
+		exit(1);
 	}  
-	if (bind(sockfd, (struct sockaddr *) &server_addr,sizeof(server_addr)) < 0)
+	if (bind(listensock, (struct sockaddr *) &server_addr,sizeof(server_addr)) < 0)
 	{
-		close(sockfd);
-		perror("Binding error");
+		close(listensock);
+		//perror("Binding error");
 		exit(1);
 	}
 
-	if(listen(sockfd,10) == -1)
+	if(listen(listensock,10) == -1)
 	{
-		perror("listen error");
+		//perror("listen error");
 		exit(1);
 	}
 
@@ -157,27 +160,21 @@ int main(int argc, char *argv[])
 	sa.sa_flags = SA_RESTART;
 	if(sigaction(SIGCHLD, &sa, NULL) == -1)
 	{
-		perror("sigaction error");
+		//perror("sigaction error");
 		exit(1);
 	}
 
 	cout << "proxy: waiting for connections..." << endl;
 
 	int numActive = 0;
-	fd_set master;
-	fd_set write_fds;
-	int fdmax=sockfd;
-	FD_ZERO(&master);
-	FD_ZERO(&write_fds);
-	map<int, HttpRequest> mapReq;
-
+	//declare socket sets
 	for (;; ++numActive) 
 	{
 		for(; numActive >= LIM; --numActive)
 			wait(&status);
 	    bzero(&client_addr,sizeof(client_addr));
-	    newsockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_size);
-	    if (newsockfd < 0)
+	    clientsock = accept(listensock, (struct sockaddr *)&client_addr, &client_addr_size);
+	    if (clientsock < 0)
 	    	perror("Accepting connection error");
 	    pid = fork();
 	    if(pid < 0)
@@ -186,93 +183,104 @@ int main(int argc, char *argv[])
 	    {
 			cout << "new process #" << getpid() << endl;
 			char buffer[256];
-			string from_client_str;
+			fd_set read_fds;
+			FD_ZERO(&read_fds);
+			FD_SET(clientsock, &read_fds); //add client socket to read sockets
+			int maxsock = clientsock;
+			map<string,int> hostmap;
 			while(1)
 			{
-				from_client_str = "";
-		    	//getting the request string
-		    	while(1)
-		    	{
-		        	bzero(buffer,256);
-		        	n = read(newsockfd,buffer,255);
-					if (n == 0)		//telnet closed
-						break;
-		        	if (n < 0)
-		        		perror("Read request error");
-		        	from_client_str.append(buffer,n);
-		        	//check end with \r\n\r\n
-		        	if (memmem(from_client_str.c_str(), from_client_str.length(), "\r\n\r\n", 4) != NULL)
-		        		break;
-				}
-				if (n == 0) //client closed connection
-				{
-					cout << "process #" << getpid() << " is killed" << endl;
-					close(newsockfd);
-					exit(1);
-					break;
-				}
-
-		      	HttpRequest client_req;
-
-				try
-				{
-					client_req.ParseRequest(from_client_str.c_str(),from_client_str.length());
-				}
-				catch(ParseException& p)
-				{
-				
-					string s = p.what();
-					s += "\n";
-					if (s == "Request is not GET\n")
-						s="501 Not Implemented\n";
-					else
-						s="400 Bad Request\n";
-					write(newsockfd, s.c_str(), s.length());
-					continue;
-				}
-
-				get_host(&client_req);
-				get_port(&client_req);
-				client_req.ModifyHeader("Connection","keep-alive");
-
-				remotesockfd = getRemoteSocket(client_req);
-				mapReq[remotesockfd] = client_req;     //add to socket-request map
-				FD_SET(remotesockfd, &master);		//add socket to write set
-
-				write_fds=master;
-				if(remotesockfd > fdmax)
-					fdmax=remotesockfd;
-				if(select(fdmax+1,NULL,&write_fds,NULL,NULL)==-1)
+				struct timeval tv;
+				tv.tv_sec = 15;
+				if(select(maxsock+1,&read_fds,NULL,NULL,&tv)==-1)
 				{
 					perror("select error");
 					exit(4);
 				}
-
-				for(int i=0;i<=fdmax; i++)
+				if(FD_ISSET(clientsock, &read_fds))
 				{
-					if(FD_ISSET(i, &write_fds))
+					string rstring = "";
+			    	while(1)
+			    	{
+			        	bzero(buffer,256);
+			        	n = read(clientsock,buffer,255);
+						if (n == 0)		//telnet closed
+							break;
+			        	if (n < 0)
+			        		perror("Read request error");
+			        	rstring.append(buffer,n);
+			        	if (memmem(rstring.c_str(), rstring.length(), "\r\n\r\n", 4) != NULL)
+			        		break; //check end with \r\n\r\n
+					}
+					if (n == 0) //client closed connection
 					{
-						if(i != sockfd)
+						cout << "process #" << getpid() << " is killed" << endl;
+						close(clientsock);
+						exit(1);
+						break;
+					}
+			      	HttpRequest client_req;
+					try	{
+						client_req.ParseRequest(rstring.c_str(),rstring.length());
+					} catch(ParseException& p) {
+						string s = p.what();
+						s += "\n";
+						if (s == "Request is not GET\n")
+							s="501 Not Implemented\n";
+						else
+							s="400 Bad Request\n";
+						write(clientsock, s.c_str(), s.length());
+						continue;
+					}
+					get_host(&client_req);
+					get_port(&client_req);
+					client_req.ModifyHeader("Connection","keep-alive");
+					int remotesock;
+					if(hostmap.find(client_req.GetHost()) == hostmap.end())
+					{
+						remotesock = getRemoteSocket(client_req);
+						FD_SET(remotesock, &read_fds);	//add socket to read set
+						hostmap[client_req.GetHost()] = remotesock;
+						if(remotesock > maxsock)
+							maxsock = remotesock;
+					}
+					else
+						remotesock = hostmap[client_req.GetHost()];
+					send_remote_req(client_req, remotesock);
+				}
+				else
+				{
+					int hostsock = -1;
+					for(map<string,int>::iterator it=hostmap.begin(); it!=hostmap.end(); it++)
+					{
+						if(FD_ISSET(it->second, &read_fds))
 						{
-							string s = get_remote_page(mapReq[i], i);
-							HttpResponse client_resp;
-							client_resp.ParseResponse(s.c_str(),s.length());
-							int old_len = client_resp.HttpResponse::GetTotalLength();
-							client_resp.ModifyHeader("Connection","keep-alive");
-							int len = client_resp.HttpResponse::GetTotalLength();
-							char sendBuff[len+1];
-							client_resp.FormatResponse(sendBuff);
-							string sendstring = "";
-							sendstring.append(sendBuff,len);
-							sendstring.append(s.substr(old_len).c_str(),s.length()-old_len);
-							if(write(newsockfd,sendstring.c_str(),sendstring.length()) == -1)
-								perror("Sending response error");
+							hostsock = it->second;
+							break;
 						}
 					}
+					if(hostsock == -1)
+					{
+						perror("Host response dropped.");
+						continue;
+					}
+					string s = get_remote_resp(hostsock);
+					HttpResponse client_resp;
+					client_resp.ParseResponse(s.c_str(),s.length());
+					int old_len = client_resp.HttpResponse::GetTotalLength();
+					client_resp.ModifyHeader("Connection","keep-alive");
+					int len = client_resp.HttpResponse::GetTotalLength();
+					char sendBuff[len+1];
+					client_resp.FormatResponse(sendBuff);
+					string sendstring = "";
+					sendstring.append(sendBuff,len);
+					sendstring.append(s.substr(old_len).c_str(),s.length()-old_len);
+					if(write(clientsock,sendstring.c_str(),sendstring.length()) == -1)
+						perror("Sending response error");
 				}
 			}
 	    }
 	}
-	close(sockfd);
+	close(listensock);
 	  return 0;
 }
