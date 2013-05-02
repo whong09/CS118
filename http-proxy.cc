@@ -139,19 +139,19 @@ int main(int argc, char *argv[])
 
 	if (setsockopt(listensock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
 	{
-		//perror("setsockopt"); 
+		perror("setsockopt"); 
 		exit(1);
 	}  
 	if (bind(listensock, (struct sockaddr *) &server_addr,sizeof(server_addr)) < 0)
 	{
 		close(listensock);
-		//perror("Binding error");
+		perror("Binding error");
 		exit(1);
 	}
 
 	if(listen(listensock,10) == -1)
 	{
-		//perror("listen error");
+		perror("listen error");
 		exit(1);
 	}
 
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
 	sa.sa_flags = SA_RESTART;
 	if(sigaction(SIGCHLD, &sa, NULL) == -1)
 	{
-		//perror("sigaction error");
+		perror("sigaction error");
 		exit(1);
 	}
 
@@ -197,86 +197,78 @@ int main(int argc, char *argv[])
 					perror("select error");
 					exit(4);
 				}
-				if(FD_ISSET(clientsock, &read_fds))
+				for(int i=0; i<=maxsock; i++)
 				{
-					string rstring = "";
-			    	while(1)
-			    	{
-			        	bzero(buffer,256);
-			        	n = read(clientsock,buffer,255);
-						if (n == 0)		//telnet closed
-							break;
-			        	if (n < 0)
-			        		perror("Read request error");
-			        	rstring.append(buffer,n);
-			        	if (memmem(rstring.c_str(), rstring.length(), "\r\n\r\n", 4) != NULL)
-			        		break; //check end with \r\n\r\n
-					}
-					if (n == 0) //client closed connection
+					if(FD_ISSET(i, &read_fds))
 					{
-						cout << "process #" << getpid() << " is killed" << endl;
-						close(clientsock);
-						exit(1);
-						break;
-					}
-			      	HttpRequest client_req;
-					try	{
-						client_req.ParseRequest(rstring.c_str(),rstring.length());
-					} catch(ParseException& p) {
-						string s = p.what();
-						s += "\n";
-						if (s == "Request is not GET\n")
-							s="501 Not Implemented\n";
-						else
-							s="400 Bad Request\n";
-						write(clientsock, s.c_str(), s.length());
-						continue;
-					}
-					get_host(&client_req);
-					get_port(&client_req);
-					client_req.ModifyHeader("Connection","keep-alive");
-					int remotesock;
-					if(hostmap.find(client_req.GetHost()) == hostmap.end())
-					{
-						remotesock = getRemoteSocket(client_req);
-						FD_SET(remotesock, &read_fds);	//add socket to read set
-						hostmap[client_req.GetHost()] = remotesock;
-						if(remotesock > maxsock)
-							maxsock = remotesock;
-					}
-					else
-						remotesock = hostmap[client_req.GetHost()];
-					send_remote_req(client_req, remotesock);
-				}
-				else
-				{
-					int hostsock = -1;
-					for(map<string,int>::iterator it=hostmap.begin(); it!=hostmap.end(); it++)
-					{
-						if(FD_ISSET(it->second, &read_fds))
+						if(i==clientsock)
 						{
-							hostsock = it->second;
-							break;
+							string rstring = "";
+					    	while(1)
+					    	{
+					        	bzero(buffer,256);
+					        	n = read(clientsock,buffer,255);
+								if (n == 0)		//telnet closed
+									break;
+					        	if (n < 0)
+					        		perror("Read request error");
+					        	rstring.append(buffer,n);
+					        	if (memmem(rstring.c_str(), rstring.length(), "\r\n\r\n", 4) != NULL)
+					        		break; //check end with \r\n\r\n
+							}
+							if (n == 0) //client closed connection
+							{
+								cout << "process #" << getpid() << " is killed" << endl;
+								close(clientsock);
+								exit(1);
+								break;
+							}
+					      	HttpRequest client_req;
+							try	{
+								client_req.ParseRequest(rstring.c_str(),rstring.length());
+							} catch(ParseException& p) {
+								string s = p.what();
+								s += "\n";
+								if (s == "Request is not GET\n")
+									s="501 Not Implemented\n";
+								else
+									s="400 Bad Request\n";
+								write(clientsock, s.c_str(), s.length());
+								continue;
+							}
+							get_host(&client_req);
+							get_port(&client_req);
+							client_req.ModifyHeader("Connection","keep-alive");
+							int remotesock;
+							if(hostmap.find(client_req.GetHost()) == hostmap.end())
+							{
+								remotesock = getRemoteSocket(client_req);
+								FD_SET(remotesock, &read_fds);	//add socket to read set
+								hostmap[client_req.GetHost()] = remotesock;
+								if(remotesock > maxsock)
+									maxsock = remotesock;
+							}
+							else
+								remotesock = hostmap[client_req.GetHost()];
+							send_remote_req(client_req, remotesock);
+						}
+						else
+						{
+							string s = get_remote_resp(i);
+							HttpResponse client_resp;
+							client_resp.ParseResponse(s.c_str(),s.length());
+							int old_len = client_resp.HttpResponse::GetTotalLength();
+							client_resp.ModifyHeader("Connection","keep-alive");
+							int len = client_resp.HttpResponse::GetTotalLength();
+							char sendBuff[len+1];
+							client_resp.FormatResponse(sendBuff);
+							string sendstring = "";
+							sendstring.append(sendBuff,len);
+							sendstring.append(s.substr(old_len).c_str(),s.length()-old_len);
+							if(write(clientsock,sendstring.c_str(),sendstring.length()) == -1)
+								perror("Sending response error");
 						}
 					}
-					if(hostsock == -1)
-					{
-						perror("Host response dropped.");
-						continue;
-					}
-					string s = get_remote_resp(hostsock);
-					HttpResponse client_resp;
-					client_resp.ParseResponse(s.c_str(),s.length());
-					int old_len = client_resp.HttpResponse::GetTotalLength();
-					client_resp.ModifyHeader("Connection","keep-alive");
-					int len = client_resp.HttpResponse::GetTotalLength();
-					char sendBuff[len+1];
-					client_resp.FormatResponse(sendBuff);
-					string sendstring = "";
-					sendstring.append(sendBuff,len);
-					sendstring.append(s.substr(old_len).c_str(),s.length()-old_len);
-					if(write(clientsock,sendstring.c_str(),sendstring.length()) == -1)
-						perror("Sending response error");
 				}
 			}
 	    }
