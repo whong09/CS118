@@ -93,6 +93,8 @@ string get_remote_resp(int serverSock)
 	{
 		s.append(recvBuff,n);
 	}
+	if(s.length()==0)
+		close(serverSock);
 	return s;
 }
 
@@ -190,9 +192,9 @@ int main(int argc, char *argv[])
 			map<string,int> hostmap;
 			while(1)
 			{
-				struct timeval tv;
-				tv.tv_sec = 15;
-				if(select(maxsock+1,&read_fds,NULL,NULL,&tv)==-1)
+			//	struct timeval tv;
+			//	tv.tv_sec = 1;
+				if(select(maxsock+1,&read_fds,NULL,NULL,NULL)==-1)
 				{
 					perror("select error");
 					exit(4);
@@ -238,7 +240,7 @@ int main(int argc, char *argv[])
 							}
 							get_host(&client_req);
 							get_port(&client_req);
-							client_req.ModifyHeader("Connection","keep-alive");
+							client_req.ModifyHeader("Connection","close");
 							int remotesock;
 							if(hostmap.find(client_req.GetHost()) == hostmap.end())
 							{
@@ -255,8 +257,22 @@ int main(int argc, char *argv[])
 						else
 						{
 							string s = get_remote_resp(i);
+							close(i);
+							FD_CLR(i, &read_fds);
 							HttpResponse client_resp;
-							client_resp.ParseResponse(s.c_str(),s.length());
+								try	{
+								client_resp.ParseResponse(s.c_str(),s.length());
+							} catch(ParseException& p) {
+								string c = p.what();
+								c += "\n";
+						//		if (c == "HTTP response doesn't end with \\r\\n\n")
+						//			c="closed\n";
+						//		write(clientsock, c.c_str(), c.length());
+								cout << c << endl;
+						//		hostmap.erase(i);
+								continue;
+							}
+
 							int old_len = client_resp.HttpResponse::GetTotalLength();
 							client_resp.ModifyHeader("Connection","keep-alive");
 							int len = client_resp.HttpResponse::GetTotalLength();
