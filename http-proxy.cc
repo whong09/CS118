@@ -152,7 +152,7 @@ void send_remote_req(HttpRequest req, int serverSock)
 {
 	int length = req.HttpRequest::GetTotalLength();
 	char sendBuff[length+1];
-	memset(sendBuff, 0, length);
+	memset(sendBuff, 0, length+1);
 	req.FormatRequest(sendBuff);
 	if(write(serverSock,sendBuff,length) < 0)
 	{
@@ -183,7 +183,9 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 	int len;
 	fstream mycache;
 	string filename;
-	filename += (string)get_host(&req);
+	filename += (string)get_host(&req)+":";
+	string portstring = boost::lexical_cast<string>(get_port(&req));
+	filename += portstring;
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
@@ -217,7 +219,9 @@ int write_to_cache(HttpRequest req, char * buf, int len)
 {
 	fstream mycache;
 	string filename;
-	filename += (string)get_host(&req);
+	filename += (string)get_host(&req)+":";
+	string portstring = boost::lexical_cast<string>(get_port(&req));
+	filename += portstring;
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
@@ -364,8 +368,9 @@ int main(int argc, char *argv[])
 							}
 							int remotesock;
 							hostname = get_host(&client_req);
+							string portstring = boost::lexical_cast<string>(get_port(&client_req));
 							cout << hostname << endl;
-							if(hostmap.find(hostname) == hostmap.end())
+							if(hostmap.find(hostname+portstring) == hostmap.end())
 							{
 								/*int status;
 								struct addrinfo *servinfo, *p;
@@ -393,13 +398,14 @@ int main(int argc, char *argv[])
 								
 								remotesock = getRemoteSocket(client_req);
 								FD_SET(remotesock, &read_fds);	//add socket to read set
-								hostmap.insert(pair<string,int>(hostname,remotesock));
+								string portstring = boost::lexical_cast<string>(get_port(&client_req));
+								hostmap.insert(pair<string,int>(hostname+portstring,remotesock));
 								if(remotesock > maxsock)
 									maxsock = remotesock;
-								cout << hostmap.find(hostname)->second << "in the map" << endl;
+								cout << hostmap.find(hostname+portstring)->second << "in the map" << endl;
 							}
 							else
-								{remotesock = hostmap.find(hostname)->second;FD_SET(remotesock, &read_fds);cout << remotesock << endl;}
+								{remotesock = hostmap.find(hostname+portstring)->second;FD_SET(remotesock, &read_fds);cout << remotesock << endl;}
 							
 							//generate the buffer to send to the remote server, either the original request
 							// or the modified request with If-Modified-Since
@@ -407,7 +413,7 @@ int main(int argc, char *argv[])
 							
 							int cli_length = client_req.HttpRequest::GetTotalLength();
 							char sendBuff[cli_length+1];
-							memset(sendBuff, 0, cli_length);
+							memset(sendBuff, 0, cli_length+1);
 							client_req.FormatRequest(sendBuff);
 							cout << (string)sendBuff << endl;
 							if(write(remotesock,sendBuff,cli_length) < 0)
@@ -430,11 +436,12 @@ int main(int argc, char *argv[])
 								HttpRequest redo;
 								redo = reqmap.find(i)->second;
 								int redosock = getRemoteSocket(redo);
-								hostmap[get_host(&redo)] = redosock;
+								string portstring = boost::lexical_cast<string>(get_port(&redo));
+								hostmap[get_host(&redo)+portstring] = redosock;
 								send_remote_req(redo, redosock);
 								reqmap.erase(reqmap.find(i));
 								reqmap[redosock] = redo;
-								hostmap.insert(pair<string,int>(get_host(&redo),redosock));
+								hostmap.insert(pair<string,int>(get_host(&redo)+portstring,redosock));
 								if(redosock > maxsock)
 									maxsock = redosock;
 								FD_CLR(i, &read_fds);
