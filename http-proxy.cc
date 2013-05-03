@@ -212,17 +212,24 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			HttpResponse resp;
 			resp.ParseResponse(buf,len);
 			string expires = resp.FindHeader("Expires");
-			cout << "expire time is " << expires << endl;
-			struct tm expiretm;
-			static const char format[] = "%a, %d %b %Y %H:%M:%S %Z";
-			bzero(&expiretm, sizeof(expiretm));
-			strptime(expires.c_str(), format, &expiretm);
-			time_t expiretime = mktime(&expiretm);
-			time_t now = time(NULL);
-			if(difftime(expiretime,now) < 0)
-				req.SetHost("");
-			string date = resp.FindHeader("Date");
-			req.ModifyHeader("If-Modified-Since",date);
+			if(expires != "" || expires != "-1")
+			{
+				cout << "always expire" << endl;
+				string date = resp.FindHeader("Date");
+				req.ModifyHeader("If-Modified-Since",date);
+			}
+			else
+			{
+				cout << "expire time is " << expires << endl;
+				struct tm expiretm;
+				static const char format[] = "%a, %d %b %Y %H:%M:%S %Z";
+				bzero(&expiretm, sizeof(expiretm));
+				strptime(expires.c_str(), format, &expiretm);
+				time_t expiretime = mktime(&expiretm);
+				time_t now = time(NULL);
+				if(difftime(expiretime,now) < 0)
+					req.SetHost("");
+			}
 		}
 	}
 	mycache.close();
@@ -426,6 +433,10 @@ int main(int argc, char *argv[])
 							client_req = generate_condition_req(client_req,remotesock,reqrespmap);
 							if(get_host(&client_req) == "")
 							{
+								//HttpRequest theReq = reqmap.find(remotesock)->second;
+								string sendback = reqrespmap.find(remotesock)->second;
+								if(write(clientsock,sendback.c_str(),sendback.length()) == -1)
+									{cout << "here?" << endl;perror("Sending response error");}
 								
 							}
 							int cli_length = client_req.HttpRequest::GetTotalLength();
