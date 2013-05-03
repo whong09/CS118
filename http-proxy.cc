@@ -54,7 +54,7 @@ unsigned short get_port(HttpRequest * req)
 	return req->GetPort();
 }
 
-string recv_timeout(int s , int timeout)
+string recv_timeout(int s , double timeout)
 {
     int size_recv , total_size= 0;
     struct timeval begin , now;
@@ -110,28 +110,41 @@ string recv_timeout(int s , int timeout)
 int getRemoteSocket(HttpRequest req)
 {
 	int serverSock, status;
-	struct addrinfo *servinfo, *p;
-	struct addrinfo hints;
-	memset(&hints,0,sizeof(hints));
-	hints.ai_family = PF_INET;
-	hints.ai_flags = AI_PASSIVE;
-	hints.ai_socktype = SOCK_STREAM;
+	if(get_host(&req) != "127.0.0.1")
+	{
+		struct addrinfo *servinfo, *p;
+		struct addrinfo hints;
+		memset(&hints,0,sizeof(hints));
+		hints.ai_family = PF_INET;
+		hints.ai_flags = AI_PASSIVE;
+		hints.ai_socktype = SOCK_STREAM;
 
-	if((status = getaddrinfo(get_host(&req).c_str(), "http", &hints, &servinfo)) != 0)
-		perror(gai_strerror(status));
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((serverSock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-			continue;
+		if((status = getaddrinfo(get_host(&req).c_str(), "http", &hints, &servinfo)) != 0)
+			perror(gai_strerror(status));
+		for(p = servinfo; p != NULL; p = p->ai_next) {
+			if ((serverSock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+				continue;
+			}
+			if (connect(serverSock, p->ai_addr, p->ai_addrlen) == -1) {
+				close(serverSock);
+				continue;
+			}
+			break;
 		}
-		if (connect(serverSock, p->ai_addr, p->ai_addrlen) == -1) {
-			close(serverSock);
-			continue;
-		}
-		break;
+		if(p==NULL)
+			perror("Connect Error");
+		freeaddrinfo(servinfo);
 	}
-	if(p==NULL)
-		perror("Connect Error");
-	freeaddrinfo(servinfo);
+	else
+	{
+		struct sockaddr_in serv_addr;
+		serverSock = socket(AF_INET, SOCK_STREAM, 0);
+		memset(&serv_addr, '0', sizeof(serv_addr)); 
+		serv_addr.sin_family = AF_INET;
+		serv_addr.sin_port = htons(get_port(&req));
+		inet_pton(AF_INET, get_host(&req).c_str(), &serv_addr.sin_addr);
+		connect(serverSock,(struct sockaddr *)&serv_addr,sizeof(serv_addr));
+	}
 	return serverSock;
 }
 
@@ -409,7 +422,7 @@ int main(int argc, char *argv[])
 						else
 						{
 							cout << "reading the remote" << endl;
-							string s = recv_timeout(i,1);
+							string s = recv_timeout(i,0.2);
 							if(s=="")
 							{
 								cout << "resending" <<endl;
