@@ -213,9 +213,13 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			resp.ParseResponse(buf,len);
 			string expires = resp.FindHeader("Expires");
 			cout << "expire time is " << expires << endl;
-			ptime expiretime = time_from_string(expires);
-			ptime now = second_clock::universal_time();
-			if(now >= expiretime)
+			struct tm expiretm;
+			static const char format[] = "%a, %d %b %Y %H:%M:%S %Z";
+			bzero(&expiretm, sizeof(expiretm));
+			strptime(expires.c_str(), format, &expiretm);
+			time_t expiretime = mktime(&expiretm);
+			time_t now = time(NULL);
+			if(difftime(expiretime,now) < 0)
 				req.SetHost("");
 			string date = resp.FindHeader("Date");
 			req.ModifyHeader("If-Modified-Since",date);
@@ -420,7 +424,10 @@ int main(int argc, char *argv[])
 							//generate the buffer to send to the remote server, either the original request
 							// or the modified request with If-Modified-Since
 							client_req = generate_condition_req(client_req,remotesock,reqrespmap);
-							
+							if(get_host(&client_req) == "")
+							{
+								
+							}
 							int cli_length = client_req.HttpRequest::GetTotalLength();
 							char sendBuff[cli_length+1];
 							memset(sendBuff, 0, cli_length+1);
