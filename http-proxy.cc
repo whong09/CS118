@@ -1,3 +1,4 @@
+#include "boost/date_time/posix_time/posix_time.hpp"
 #include <sstream>
 #include <iostream>
 #include <sys/socket.h>
@@ -22,11 +23,14 @@
 #include "fstream"
 #include "boost/functional/hash.hpp"
 #include "boost/lexical_cast.hpp"
+#include "ctime"
 
 #define LIM 10
 #define STDIN 0
 
 using namespace std;
+using namespace boost::gregorian;
+using namespace boost::posix_time;
 
 
 int hashCode(string s)
@@ -207,6 +211,12 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			cout << "the cache is\n" << s << endl;
 			HttpResponse resp;
 			resp.ParseResponse(buf,len);
+			string expires = resp.FindHeader("Expires");
+			cout << "expire time is " << expires << endl;
+			ptime expiretime = time_from_string(expires);
+			ptime now = second_clock::universal_time();
+			if(now >= expiretime)
+				req.SetHost("");
 			string date = resp.FindHeader("Date");
 			req.ModifyHeader("If-Modified-Since",date);
 		}
