@@ -212,7 +212,7 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			HttpResponse resp;
 			resp.ParseResponse(buf,len);
 			string expires = resp.FindHeader("Expires");
-			if(expires != "" || expires != "-1")
+			if(expires == "" || expires == "-1")
 			{
 				cout << "always expire" << endl;
 				string date = resp.FindHeader("Date");
