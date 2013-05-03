@@ -74,7 +74,7 @@ string recv_timeout(int s , int timeout)
         //time elapsed in seconds
         timediff = (now.tv_sec - begin.tv_sec) + 1e-6 * (now.tv_usec - begin.tv_usec);
         //if you got some data, then break after timeout
-        if(total_size > 0 && timediff > timeout)
+        if( total_size > 0 && timediff > timeout )
         {
             break;
         }
@@ -116,10 +116,8 @@ int getRemoteSocket(HttpRequest req)
 	hints.ai_family = PF_INET;
 	hints.ai_flags = AI_PASSIVE;
 	hints.ai_socktype = SOCK_STREAM;
-	stringstream port;
-	port << get_port(&req);
 
-	if((status = getaddrinfo(get_host(&req).c_str(), port.str().c_str(), &hints, &servinfo)) != 0)
+	if((status = getaddrinfo(get_host(&req).c_str(), "http", &hints, &servinfo)) != 0)
 		perror(gai_strerror(status));
 	for(p = servinfo; p != NULL; p = p->ai_next) {
 		if ((serverSock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
@@ -176,7 +174,7 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
-	filename = "./"+filename;
+	filename = "./cache/"+filename;
 	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::in);
 	if(mycache)
@@ -210,7 +208,7 @@ int write_to_cache(HttpRequest req, char * buf, int len)
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
-	filename = "./"+filename;
+	filename = "./cache/"+filename;
 	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::out);
 	if(!mycache)
@@ -225,7 +223,7 @@ int write_to_cache(HttpRequest req, char * buf, int len)
 int main(int argc, char *argv[])
 {
 	int listensock, clientsock, n, pid, status;
-	int port = 14805;
+	int port = 48809;
 	int yes = 1;
 	struct sockaddr_in server_addr, client_addr;
 	struct sigaction sa;
@@ -274,9 +272,7 @@ int main(int argc, char *argv[])
 		for(; numActive >= LIM; --numActive)
 			wait(&status);
 	    bzero(&client_addr,sizeof(client_addr));
-	    cout << "Accepting sockets" << endl;
 	    clientsock = accept(listensock, (struct sockaddr *)&client_addr, &client_addr_size);
-	    cout << "Accepted socket: " << clientsock << endl;
 	    if (clientsock < 0)
 	    	perror("Accepting connection error");
 	    pid = fork();
@@ -296,11 +292,12 @@ int main(int argc, char *argv[])
 			int numSockReady = 0;
 			while(1)
 			{
+			//	struct timeval tv;
+			//	tv.tv_sec = 1;
 				FD_SET(clientsock, &read_fds);
-				numSockReady = select(maxsock+1,&read_fds,NULL,NULL,NULL);
-				if(numSockReady==-1)
+				if((numSockReady = select(maxsock+1,&read_fds,NULL,NULL,NULL))==-1)
 				{
-					//perror("Select error");
+					perror("Select error");
 				}
 				if(numSockReady == 0)
 				{
@@ -386,14 +383,10 @@ int main(int argc, char *argv[])
 								hostmap.insert(pair<string,int>(hostname,remotesock));
 								if(remotesock > maxsock)
 									maxsock = remotesock;
-								cout << hostmap.find(hostname)->second << " in the map" << endl;
+								cout << hostmap.find(hostname)->second << "in the map" << endl;
 							}
 							else
-							{
-								remotesock = hostmap.find(hostname)->second;
-								FD_SET(remotesock, &read_fds);
-								cout << remotesock << endl;
-							}
+								{remotesock = hostmap.find(hostname)->second;FD_SET(remotesock, &read_fds);cout << remotesock << endl;}
 							
 							//generate the buffer to send to the remote server, either the original request
 							// or the modified request with If-Modified-Since
