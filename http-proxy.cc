@@ -195,7 +195,6 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
-	filename = "./cache/"+filename;
 	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::in);
 	if(mycache)
@@ -263,7 +262,6 @@ int write_to_cache(HttpRequest req, char * buf, int len)
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
-	filename = "./cache/"+filename;
 	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::out);
 	if(!mycache)
