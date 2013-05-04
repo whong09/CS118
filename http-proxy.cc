@@ -229,7 +229,9 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 				strptime(expires.c_str(), format, &expiretm);
 				time_t expiretime = mktime(&expiretm);
 				time_t now = time(NULL);
-				if(difftime(expiretime,now) <= 0)
+				struct tm * gmt = gmtime(&now);
+				time_t gmtnow = mktime(gmt);
+				if(difftime(expiretime,gmtnow) <= 0)
 				{
 					cout << "expired" << endl;
 					string date = resp.FindHeader("Date");
