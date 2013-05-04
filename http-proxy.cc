@@ -50,7 +50,7 @@ string get_host(HttpRequest * req)
 	return req->GetHost();
 }
 
-unsigned short get_port(HttpRequest * req)
+int get_port(HttpRequest * req)
 {
 	if (req->GetPort()==0)
 	{
@@ -74,7 +74,6 @@ string recv_timeout(int s , double timeout)
 	string returnString = "";
     while(1)
     {	
-	cout << "..." <<endl;
         gettimeofday(&now , NULL);
          
         //time elapsed in seconds
@@ -166,18 +165,6 @@ void send_remote_req(HttpRequest req, int serverSock)
 	}
 }
 
-string get_remote_resp(int serverSock)
-{
-	int n;
-	char recvBuff[100];
-	string s="";
-	memset(recvBuff, 0, 100);
-	while((n = recv(serverSock, recvBuff, 99,0)) > 0)
-	{
-		s.append(recvBuff,n);
-	}
-	return s;
-}
 
 void sigchld_handler(int s)       //reap dead process
 {
@@ -193,10 +180,8 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 	string portstring = boost::lexical_cast<string>(get_port(&req));
 	filename += portstring;
 	filename += (string)req.GetPath();
-	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
 	filename += foldername;
-	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::in);
 	if(mycache)
 	{
@@ -209,10 +194,8 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			mycache.read(buf,len);
 			s.append(buf,len);
 			
-			cout << "here is file content" << s << endl;
 			
 			reqrespmap->insert(pair<int,string>(remotesock,s));
-			cout << "the cache is\n" << reqrespmap->find(remotesock)->second << endl;
 			HttpResponse resp;
 			resp.ParseResponse(buf,len);
 			delete [] buf;
@@ -261,10 +244,8 @@ int write_to_cache(HttpRequest req, char * buf, int len, string& foldername)
 	string portstring = boost::lexical_cast<string>(get_port(&req));
 	filename += portstring;
 	filename += (string)req.GetPath();
-	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
 	filename += foldername;
-	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::out);
 	if(!mycache)
 		return -1;
@@ -348,8 +329,6 @@ string foldername = boost::lexical_cast<string>(getpid());
 			int numSockReady = 0;
 			while(1)
 			{
-			//	struct timeval tv;
-			//	tv.tv_sec = 1;
 				FD_SET(clientsock, &read_fds);
 				if((numSockReady = select(maxsock+1,&read_fds,NULL,NULL,NULL))==-1)
 				{
@@ -366,7 +345,6 @@ string foldername = boost::lexical_cast<string>(getpid());
 					if(FD_ISSET(i, &read_fds))
 					{
 						numSockReady -= 1;
-						cout << "is in?" << endl;
 						if(i==clientsock)
 						{
 							cout << "reading client" << endl;
@@ -409,7 +387,6 @@ string foldername = boost::lexical_cast<string>(getpid());
 							int remotesock;
 							hostname = get_host(&client_req);
 							string portstring = boost::lexical_cast<string>(get_port(&client_req));
-							cout << hostname << endl;
 							if(hostmap.find(hostname+portstring) == hostmap.end())
 							{
 								
@@ -419,10 +396,9 @@ string foldername = boost::lexical_cast<string>(getpid());
 								hostmap.insert(pair<string,int>(hostname+portstring,remotesock));
 								if(remotesock > maxsock)
 									maxsock = remotesock;
-								cout << hostmap.find(hostname+portstring)->second << "in the map" << endl;
 							}
 							else
-								{remotesock = hostmap.find(hostname+portstring)->second;FD_SET(remotesock, &read_fds);cout << remotesock << endl;}
+								{remotesock = hostmap.find(hostname+portstring)->second;FD_SET(remotesock, &read_fds);}
 							
 							//generate the buffer to send to the remote server, either the original request
 							// or the modified request with If-Modified-Since
@@ -436,14 +412,13 @@ string foldername = boost::lexical_cast<string>(getpid());
 				
 								string sendback2 = returnstring;
 								if(write(clientsock,sendback2.c_str(),sendback2.length()) == -1)
-									{cout << "here?" << endl;perror("Sending response error");}
+									{perror("Sending response error");}
 								break;
 							}
 							int cli_length = client_req.HttpRequest::GetTotalLength();
 							char * sendBuff = new char[cli_length+1];
 							memset(sendBuff, 0, cli_length+1);
 							client_req.FormatRequest(sendBuff);
-							cout << (string)sendBuff << endl;
 							if(write(remotesock,sendBuff,cli_length) < 0)
 							{
 								perror("Sending request error");
@@ -451,7 +426,6 @@ string foldername = boost::lexical_cast<string>(getpid());
 							delete [] sendBuff;
 							reqmap[remotesock] = client_req;
 							cout << "write complete" << endl;
-							//send_remote_req(client_req, remotesock);
 						}
 						else
 						{
@@ -487,25 +461,15 @@ string foldername = boost::lexical_cast<string>(getpid());
 								catch(ParseException& p)
 								{
 									string c = p.what();
-									c += "\n";
-									//		if (c == "HTTP response doesn't end with \\r\\n\n")
-									//			c="closed\n";
-									//		write(clientsock, c.c_str(), c.length());
-									cout << c << endl;
-									//		hostmap.erase(i);
 									continue;
 								}
 
-								//string sendback = "";
 								if(client_resp.GetStatusCode() == "304")
 								{
-									cout << "get into 304" << endl;
 									//HttpRequest theReq = reqmap.find(i)->second;
-cout << "1" << endl;
 									string sendback = reqrespmap.find(i)->second;
-cout<<"2" << endl; 
 									if(write(clientsock,sendback.c_str(),sendback.length()) == -1)
-                                                                        {cout << "here?" << endl;perror("Sending response error");}
+                                                                        {perror("Sending response error");}
 
 								}
 								else	//means modified, write it to file
@@ -520,7 +484,7 @@ cout<<"2" << endl;
 								
 								
 								if(write(clientsock,sendback.c_str(),sendback.length()) == -1)
-									{cout << "here?" << endl;perror("Sending response error");}
+									{perror("Sending response error");}
 								}
 							}
 						}
@@ -530,5 +494,5 @@ cout<<"2" << endl;
 	    }
 	}
 	close(listensock);
-	  return 0;
+	return 0;
 }
