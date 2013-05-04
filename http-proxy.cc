@@ -1,3 +1,4 @@
+#include <new>
 #include "boost/date_time/posix_time/posix_time.hpp"
 #include <sstream>
 #include <iostream>
@@ -62,7 +63,7 @@ string recv_timeout(int s , double timeout)
 {
     int size_recv , total_size= 0;
     struct timeval begin , now;
-	char chunk[100000];
+    char * chunk = new char[100];
     double timediff;
      
     //make socket non blocking
@@ -72,7 +73,8 @@ string recv_timeout(int s , double timeout)
     gettimeofday(&begin , NULL);
 	string returnString = "";
     while(1)
-    {
+    {	
+	cout << "..." <<endl;
         gettimeofday(&now , NULL);
          
         //time elapsed in seconds
@@ -89,8 +91,8 @@ string recv_timeout(int s , double timeout)
             break;
         }
          
-        memset(chunk ,0 , 100000);  //clear the variable
-        if((size_recv =  recv(s , chunk , 99999 , 0) ) <= 0)
+        memset(chunk ,0 , 100);  //clear the variable
+        if((size_recv =  recv(s , chunk , 99 , 0) ) <= 0)
         {
             //if nothing was received then we want to wait a little before trying again, 0.1 seconds
             usleep(100000);
@@ -106,7 +108,7 @@ string recv_timeout(int s , double timeout)
 
 	int flags = fcntl(s, F_GETFL);
 	fcntl(s, F_SETFL, flags & ~O_NONBLOCK);
-     
+	delete [] chunk;
     return returnString;
 }
 
@@ -167,10 +169,10 @@ void send_remote_req(HttpRequest req, int serverSock)
 string get_remote_resp(int serverSock)
 {
 	int n;
-	char recvBuff[100000];
+	char recvBuff[100];
 	string s="";
-	memset(recvBuff, 0, 100000);
-	while((n = recv(serverSock, recvBuff, sizeof(recvBuff),0)) > 0)
+	memset(recvBuff, 0, 100);
+	while((n = recv(serverSock, recvBuff, 99,0)) > 0)
 	{
 		s.append(recvBuff,n);
 	}
@@ -201,7 +203,7 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 		mycache.seekp(0, ios_base::end);
 		if((len=mycache.tellp()) != 0)
 		{
-			char buf[len];
+			char * buf = new char [len];
 			string s="";
 			mycache.seekp(0,ios_base::beg);
 			mycache.read(buf,len);
@@ -213,6 +215,7 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			cout << "the cache is\n" << reqrespmap.find(remotesock)->second << endl;
 			HttpResponse resp;
 			resp.ParseResponse(buf,len);
+			delete [] buf;
 			string expires = resp.FindHeader("Expires");
 			if(expires == "" || expires == "-1")
 			{
@@ -231,6 +234,7 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 				time_t now = time(NULL);
 				struct tm * gmt = gmtime(&now);
 				time_t gmtnow = mktime(gmt);
+				printf("%s",asctime(gmt));
 				if(difftime(expiretime,gmtnow) <= 0)
 				{
 					cout << "expired" << endl;
@@ -435,7 +439,7 @@ int main(int argc, char *argv[])
 								break;
 							}
 							int cli_length = client_req.HttpRequest::GetTotalLength();
-							char sendBuff[cli_length+1];
+							char * sendBuff = new char[cli_length+1];
 							memset(sendBuff, 0, cli_length+1);
 							client_req.FormatRequest(sendBuff);
 							cout << (string)sendBuff << endl;
@@ -443,9 +447,9 @@ int main(int argc, char *argv[])
 							{
 								perror("Sending request error");
 							}
+							delete [] sendBuff;
 							reqmap[remotesock] = client_req;
 							cout << "write complete" << endl;
-							
 							//send_remote_req(client_req, remotesock);
 						}
 						else
@@ -494,17 +498,21 @@ int main(int argc, char *argv[])
 								string sendback = "";
 								if(client_resp.GetStatusCode() == "304")
 								{
+									cout << "get into 304" << endl;
 									HttpRequest theReq = reqmap.find(i)->second;
+cout << "1" << endl;
 									sendback = reqrespmap.find(i)->second;
+cout<<"2" << endl; 
 								}
 								else	//means modified, write it to file
 								{
-									char sendBuff[s.length()];
+									char * sendBuff= new char[(int)s.length()];
 									strcpy(sendBuff,s.c_str());
 									sendback = s;
 									HttpRequest theReq = reqmap.find(i)->second;
 									if(write_to_cache(theReq,sendBuff,s.length()) == -1)
 										perror("Write to file failed");
+									delete [] sendBuff;
 								}
 								
 								if(write(clientsock,sendback.c_str(),sendback.length()) == -1)
