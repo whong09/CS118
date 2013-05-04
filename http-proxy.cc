@@ -184,7 +184,7 @@ void sigchld_handler(int s)       //reap dead process
 	while(waitpid(-1, NULL, WNOHANG)>0);
 }
 
-HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,string> reqrespmap, string& returnstring)
+HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,string> * reqrespmap, string& returnstring)
 {
 	int len;
 	fstream mycache;
@@ -211,8 +211,8 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			
 			cout << "here is file content" << s << endl;
 			
-			reqrespmap[remotesock] = s;
-			cout << "the cache is\n" << reqrespmap.find(remotesock)->second << endl;
+			reqrespmap->insert(pair<int,string>(remotesock,s));
+			cout << "the cache is\n" << reqrespmap->find(remotesock)->second << endl;
 			HttpResponse resp;
 			resp.ParseResponse(buf,len);
 			delete [] buf;
@@ -426,7 +426,7 @@ int main(int argc, char *argv[])
 							//generate the buffer to send to the remote server, either the original request
 							// or the modified request with If-Modified-Since
 							string returnstring = "";
-							client_req = generate_condition_req(client_req,remotesock,reqrespmap,returnstring);
+							client_req = generate_condition_req(client_req,remotesock,&reqrespmap,returnstring);
 							if(returnstring != "")
 							{
 								cout << "means that it is not expired, use the old" << endl;
@@ -495,28 +495,32 @@ int main(int argc, char *argv[])
 									continue;
 								}
 
-								string sendback = "";
+								//string sendback = "";
 								if(client_resp.GetStatusCode() == "304")
 								{
 									cout << "get into 304" << endl;
-									HttpRequest theReq = reqmap.find(i)->second;
+									//HttpRequest theReq = reqmap.find(i)->second;
 cout << "1" << endl;
-									sendback = reqrespmap.find(i)->second;
+									string sendback = reqrespmap.find(i)->second;
 cout<<"2" << endl; 
+									if(write(clientsock,sendback.c_str(),sendback.length()) == -1)
+                                                                        {cout << "here?" << endl;perror("Sending response error");}
+
 								}
 								else	//means modified, write it to file
 								{
 									char * sendBuff= new char[(int)s.length()];
 									strcpy(sendBuff,s.c_str());
-									sendback = s;
+									string sendback = s;
 									HttpRequest theReq = reqmap.find(i)->second;
 									if(write_to_cache(theReq,sendBuff,s.length()) == -1)
 										perror("Write to file failed");
 									delete [] sendBuff;
-								}
+								
 								
 								if(write(clientsock,sendback.c_str(),sendback.length()) == -1)
 									{cout << "here?" << endl;perror("Sending response error");}
+								}
 							}
 						}
 					}
