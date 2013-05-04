@@ -121,6 +121,11 @@ try:
     conn4.close()
 
 
+print cdata
+print data2
+print data3
+print data4
+
     if data4 == "OK" and data3 == cdata and data2 == cdata:
         r = True
     if r:

@@ -1,32 +1,79 @@
-General
-=======
+Simple Web proxy
+===============================================================================
+To make our web proxy we decided to use the skeleton code to save time. We made
+our proxy follow the server model that we would have only one listening socket
+that would serve as the "welcoming door." When a client connects to this socket
+the proxy forks - the parent process goes back to accepting connections while
+the child process handles the client socket requests. Lines 206-312 handle this
+simultaneous multi-client behavior. For all sockets we decided to use TCP as
+TCP can maintain persistent connections and most web servers use TCP sockets as
+well. 
 
-To learn more about ./waf, refer to http://code.google.com/p/waf/
-and http://waf.googlecode.com/svn/docs/wafbook/single.html
+The client process handles requests and responses by using the HttpRequest and
+HttpResponse objects provided by the skeleton. These served as convenient
+parsers and containers for shipping around requests and responses. For example
+we first implemented our request to the remote host as a function that takes an
+HttpRequest and returns a string containing the HttpResponse. This function was
+called get_remote_page and it created a socket to the remote host, wrote the
+request to socket, received the remote page, and finally returned that page. 
+This behavior worked to serve all requests, but did not implement the pipeline
+behavior. 
 
-Ideally, you will need only to add your source files in wscript, which is basically a Python program.
+After receiving the response from get_remote_page, the client process parses
+the response using HttpResponse and writes the response to the client socket. 
+This flow is put within an infinite loop so that after sending the response the
+client process goes back to reading the client socket for another request. If
+the read request has length 0 then this mean the client closed the connection
+from their side and the client process exits.
 
-How to use skeleton
-===================
+In this way the proxy behaves as a nonpipelined, noncached, simple web proxy. A
+client can connect to the proxy and make requests for web pages. Each time it
+makes a request the proxy opens a connection to a remote server, passes along
+the request, receive a response, and passes along the response. In the meantime:
+the client is waiting to receive a response and cannot make more requests. 
+After the client receives a response it can then make another request for a
+different web page. 
 
-Due to restrictions on lnxsrv, several steps necessary to compile and run (if you're using this skeleton):
+Pipelining
+===============================================================================
+To implement pipelining we separated handling requests from handling responses.
+In other words, once the client process sends a request to a remote host, it
+does not wait to receive the response. Instead it goes back to listening for
+either requests from the client or responses from servers. The proxy listens to
+whichever socket is able to be read from. If the socket is a client socket then
+the proxy knows that it should handle a request. If the socket is a remote host
+socket then the proxy knows that it should handle a response. In this way the
+proxy acts as a link in the pipe between the client and the relevant remote
+hosts. 
 
-1. The following lines should be added to your ~/.bashrc
+This model supports a pipelined server to the client because each time the
+client sends a request, the proxy does not hang on sending a response back to
+the client. If the client sends multiple requests, the proxy will read each 
+request as soon as it arrives and asynchronously handle responses.
 
-export PATH=/usr/local/cs/bin:$PATH
-export LD_LIBRARY_PATH=/u/cs/grad/yingdi/boost/lib:/usr/local/lib64/:$LD_LIBRARY_PATH
+We used the select function to implement pipelining. We selected from a set of 
+sockets to read from. When the client process begins it first adds the client 
+socket to the read sockets. As each request of the client is processed a 
+connection socket to the relevant remote hsot is created, and added to the read 
+set. The select function listens on the read set and returns when a socket is 
+ready to be read. If the socket is the client then a request is read and a 
+request is sent to the remote host. If the socket is the server then a response 
+is read and sent to the client. We decided to make this design to truly 
+implement pipelining. This flow can be seen in the client process code in lines
+328-512. 
 
-2. To configure environment
+Caching
+===============================================================================
+We implemented caching by saving each remote page as we recieve as a file. 
+Separate files were chosen to simplify reading, writing, and parsing cache 
+objects. Each file name is a hashed result of concatenating the hostname and 
+the pathname.
 
-./waf configure
-
-If there are any errors, please email me.
-
-3. To build/rebuild the code
-
-./waf
-
-4. All compiled executables are located in build/, so you can run them as this:
-
-build/http-proxy
-
+When handling a request the proxy checks the cache to see if the file exists. 
+If it does it checks the expiration date, sendg the file as response if not 
+past the expiration ate. If it past the expiration then a conditional getis 
+sent, using If-Modified-Since header set to the cache page Date value. 
+Otherwise if the file does not exist a request is sent for the page.
+When handling a response if the file is not in the cache or is an updated 
+version of the page then the file is added to the cache. In any case a 
+response will be sent to the client, using a cache if appropriate.

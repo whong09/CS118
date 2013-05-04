@@ -151,7 +151,7 @@ server2 = ServerThread(int(sport2))
 server1.start()
 server2.start()
 
-
+"""
 client1 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:" + sport1 + "/basic", "./basic")
 client1.start()
 client1.join()
@@ -188,7 +188,7 @@ if r:
     print "Concurrent Connection: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
 else:
     print "Concurrent Connection: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
-
+"""
 client5 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+sport1+"/cacheTest", "./basic")
 client5.start()
 client5.join()
@@ -203,6 +203,9 @@ if r:
     print "Caching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
 else:
     print "Caching: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
+
+print client5.data
+print client6.data
 
 server1.server.shutdown()
 server2.server.shutdown()

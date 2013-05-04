@@ -1,0 +1,19 @@
+Team Members:
+David Liangk - 404217758
+Jun Ma - 704149452
+Wayne Hong - 803821209
+
+main.c
+===============================================================================
+
+hashCode - David
+get_host - David/Jun
+get_port - David/Jun
+recv_timeout - David
+getRemoteSocket - David/Wayne
+send_remote_req - Jun/Wayne
+get_remote_resp - Jun/Wayne
+generate_condition_req - David
+write_to_cache - David/Jun
+main(handle listen socket:256-309) - David/Jun
+main(handle client socket:309-515) - Jun/Wayne
