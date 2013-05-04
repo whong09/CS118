@@ -184,7 +184,7 @@ void sigchld_handler(int s)       //reap dead process
 	while(waitpid(-1, NULL, WNOHANG)>0);
 }
 
-HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,string> * reqrespmap, string& returnstring)
+HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,string> * reqrespmap, string& returnstring, string& foldername)
 {
 	int len;
 	fstream mycache;
@@ -195,6 +195,7 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
+	filename += foldername;
 	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::in);
 	if(mycache)
@@ -252,7 +253,7 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 	return req;
 }
 
-int write_to_cache(HttpRequest req, char * buf, int len)
+int write_to_cache(HttpRequest req, char * buf, int len, string& foldername)
 {
 	fstream mycache;
 	string filename;
@@ -262,6 +263,7 @@ int write_to_cache(HttpRequest req, char * buf, int len)
 	filename += (string)req.GetPath();
 	cout << "filename " << filename << endl;
 	filename = boost::lexical_cast<std::string>(hashCode(filename));
+	filename += foldername;
 	cout << "filename " << filename << endl;
 	mycache.open(filename.c_str(), ios::out);
 	if(!mycache)
@@ -275,6 +277,7 @@ int write_to_cache(HttpRequest req, char * buf, int len)
 
 int main(int argc, char *argv[])
 {
+string foldername = boost::lexical_cast<string>(getpid());
 	int listensock, clientsock, n, pid, status;
 	int port = 48809;
 	int yes = 1;
@@ -424,7 +427,7 @@ int main(int argc, char *argv[])
 							//generate the buffer to send to the remote server, either the original request
 							// or the modified request with If-Modified-Since
 							string returnstring = "";
-							client_req = generate_condition_req(client_req,remotesock,&reqrespmap,returnstring);
+							client_req = generate_condition_req(client_req,remotesock,&reqrespmap,returnstring,foldername);
 							if(returnstring != "")
 							{
 								cout << "means that it is not expired, use the old" << endl;
@@ -511,7 +514,7 @@ cout<<"2" << endl;
 									strcpy(sendBuff,s.c_str());
 									string sendback = s;
 									HttpRequest theReq = reqmap.find(i)->second;
-									if(write_to_cache(theReq,sendBuff,s.length()) == -1)
+									if(write_to_cache(theReq,sendBuff,s.length(),foldername) == -1)
 										perror("Write to file failed");
 									delete [] sendBuff;
 								
