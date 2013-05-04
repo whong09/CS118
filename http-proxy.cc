@@ -182,7 +182,7 @@ void sigchld_handler(int s)       //reap dead process
 	while(waitpid(-1, NULL, WNOHANG)>0);
 }
 
-HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,string> reqrespmap)
+HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,string> reqrespmap, string& returnstring)
 {
 	int len;
 	fstream mycache;
@@ -207,8 +207,10 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 			mycache.read(buf,len);
 			s.append(buf,len);
 			
+			cout << "here is file content" << s << endl;
+			
 			reqrespmap[remotesock] = s;
-			cout << "the cache is\n" << s << endl;
+			cout << "the cache is\n" << reqrespmap.find(remotesock)->second << endl;
 			HttpResponse resp;
 			resp.ParseResponse(buf,len);
 			string expires = resp.FindHeader("Expires");
@@ -228,7 +230,10 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 				time_t expiretime = mktime(&expiretm);
 				time_t now = time(NULL);
 				if(difftime(expiretime,now) < 0)
-					req.SetHost("");
+				{
+					returnstring = s;
+					cout << "expired" << endl;
+				}
 			}
 		}
 	}
@@ -353,6 +358,7 @@ int main(int argc, char *argv[])
 						{
 							cout << "reading client" << endl;
 							string rstring = "";
+							
 							//since the buffer size is 1, so we will read only 1 request at one time
 					    	while(1)
 					    	{
@@ -393,29 +399,6 @@ int main(int argc, char *argv[])
 							cout << hostname << endl;
 							if(hostmap.find(hostname+portstring) == hostmap.end())
 							{
-								/*int status;
-								struct addrinfo *servinfo, *p;
-								struct addrinfo hints;
-								memset(&hints,0,sizeof(hints));
-								hints.ai_family = PF_INET;
-								hints.ai_flags = AI_PASSIVE;
-								hints.ai_socktype = SOCK_STREAM;
-
-								if((status = getaddrinfo(get_host(&client_req).c_str(), "http", &hints, &servinfo)) != 0)
-									perror(gai_strerror(status));
-								for(p = servinfo; p != NULL; p = p->ai_next) {
-									if ((remotesock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-										continue;
-									}
-									if (connect(remotesock, p->ai_addr, p->ai_addrlen) == -1) {
-										close(remotesock);
-										continue;
-									}
-									break;
-								}
-								if(p==NULL)
-									perror("Connect Error");
-								freeaddrinfo(servinfo);*/
 								
 								remotesock = getRemoteSocket(client_req);
 								FD_SET(remotesock, &read_fds);	//add socket to read set
@@ -430,14 +413,18 @@ int main(int argc, char *argv[])
 							
 							//generate the buffer to send to the remote server, either the original request
 							// or the modified request with If-Modified-Since
-							client_req = generate_condition_req(client_req,remotesock,reqrespmap);
-							if(get_host(&client_req) == "")
+							string returnstring = "";
+							client_req = generate_condition_req(client_req,remotesock,reqrespmap,returnstring);
+							if(returnstring != "")
 							{
+								cout << "means that it is not expired, use the old" << endl;
+								FD_CLR(remotesock, &read_fds);
 								//HttpRequest theReq = reqmap.find(remotesock)->second;
-								string sendback = reqrespmap.find(remotesock)->second;
-								if(write(clientsock,sendback.c_str(),sendback.length()) == -1)
+				
+								string sendback2 = returnstring;
+								if(write(clientsock,sendback2.c_str(),sendback2.length()) == -1)
 									{cout << "here?" << endl;perror("Sending response error");}
-								
+								break;
 							}
 							int cli_length = client_req.HttpRequest::GetTotalLength();
 							char sendBuff[cli_length+1];
