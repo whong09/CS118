@@ -229,10 +229,16 @@ HttpRequest generate_condition_req(HttpRequest req,int remotesock, map<int,strin
 				strptime(expires.c_str(), format, &expiretm);
 				time_t expiretime = mktime(&expiretm);
 				time_t now = time(NULL);
-				if(difftime(expiretime,now) < 0)
+				if(difftime(expiretime,now) <= 0)
 				{
-					returnstring = s;
 					cout << "expired" << endl;
+					string date = resp.FindHeader("Date");
+					req.ModifyHeader("If-Modified-Since",date);
+				}
+				else
+				{
+					cout << "not expired" << endl;
+					returnstring = s;
 				}
 			}
 		}
