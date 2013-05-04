@@ -260,7 +260,7 @@ int main(int argc, char *argv[])
 {
 string foldername = boost::lexical_cast<string>(getpid());
 	int listensock, clientsock, n, pid, status;
-	int port = 48809;
+	int port = 14805;
 	int yes = 1;
 	struct sockaddr_in server_addr, client_addr;
 	struct sigaction sa;
